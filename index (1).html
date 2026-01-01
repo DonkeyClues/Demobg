@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Remove Background Demo</title>
+  <style>
+    body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial; padding: 24px; }
+    .container { max-width: 800px; margin: 0 auto; }
+    .row { display:flex; gap:16px; align-items:center; margin-top:16px; flex-wrap:wrap; }
+    img { max-width: 100%; height: auto; border: 1px solid #ddd; border-radius: 6px; }
+    .preview { width: 48%; min-width: 240px; }
+    .controls { display:flex; gap:12px; align-items:center; }
+    .spinner { display:inline-block; width:18px; height:18px; border:3px solid #ccc; border-top-color:#333; border-radius:50%; animation:spin 1s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .hidden { display:none; }
+    button { padding:8px 12px; border-radius:6px; border:1px solid #bbb; background:#f5f5f5; cursor:pointer; }
+    button:disabled { opacity:0.6; cursor:default; }
+    .note { margin-top:12px; color:#666; font-size:0.9rem; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Remove Background — Demo</h1>
+
+    <p>Select an image; the page will send it to remove.bg and show the result with background removed.</p>
+
+    <div class="controls">
+      <input id="fileInput" type="file" accept="image/*" />
+      <button id="uploadBtn" disabled>Upload & Remove Background</button>
+      <div id="status" class="note"></div>
+    </div>
+
+    <div class="row">
+      <div class="preview">
+        <h3>Original</h3>
+        <img id="origImg" alt="original preview" />
+      </div>
+
+      <div class="preview">
+        <h3>Result (no background)</h3>
+        <img id="resultImg" alt="result preview" />
+        <div style="margin-top:8px;">
+          <a id="downloadLink" class="hidden" download="no-bg.png">Download PNG</a>
+        </div>
+      </div>
+    </div>
+
+    <p class="note">
+      NOTE: Embedding API keys in client-side pages is insecure. Use the server-side proxy example (see server.js) for production or if requests are blocked by CORS.
+    </p>
+  </div>
+
+<script>
+  // Replace with the API key you provided (insecure if used client-side)
+  const REMOVE_BG_API_KEY = "L6QDZLMSTVGQquXUYYzTRShX";
+  const API_URL = "https://api.remove.bg/v1.0/removebg";
+
+  const fileInput = document.getElementById("fileInput");
+  const uploadBtn = document.getElementById("uploadBtn");
+  const origImg = document.getElementById("origImg");
+  const resultImg = document.getElementById("resultImg");
+  const statusEl = document.getElementById("status");
+  const downloadLink = document.getElementById("downloadLink");
+
+  let selectedFile = null;
+
+  fileInput.addEventListener("change", (ev) => {
+    const f = ev.target.files && ev.target.files[0];
+    if (!f) {
+      uploadBtn.disabled = true;
+      selectedFile = null;
+      origImg.src = "";
+      return;
+    }
+    selectedFile = f;
+    uploadBtn.disabled = false;
+    origImg.src = URL.createObjectURL(f);
+    resultImg.src = "";
+    downloadLink.classList.add("hidden");
+    statusEl.textContent = "";
+  });
+
+  uploadBtn.addEventListener("click", async () => {
+    if (!selectedFile) return;
+    uploadBtn.disabled = true;
+    statusEl.innerHTML = '<span class="spinner"></span> Processing...';
+    try {
+      const outBlob = await removeBg(selectedFile);
+      // Show result
+      const outUrl = URL.createObjectURL(outBlob);
+      resultImg.src = outUrl;
+
+      // Create a download link
+      downloadLink.href = outUrl;
+      downloadLink.classList.remove("hidden");
+
+      statusEl.textContent = "Done.";
+    } catch (err) {
+      console.error(err);
+      statusEl.textContent = "Error: " + (err.message || err);
+      // If you see CORS / network errors, use the server proxy below.
+    } finally {
+      uploadBtn.disabled = false;
+    }
+  });
+
+  /**
+   * Sends an image File/Blob to remove.bg API and returns a Blob (PNG).
+   * Note: This runs in the browser and embeds the API key here.
+   * If you prefer not to expose the key, run a server proxy (see server.js).
+   *
+   * @param {File|Blob} file
+   * @returns {Promise<Blob>} PNG blob with transparent background
+   */
+  async function removeBg(file) {
+    const formData = new FormData();
+    formData.append("size", "auto");
+    // field name must be "image_file"
+    formData.append("image_file", file, file.name || "file.jpg");
+
+    const resp = await fetch(API_URL, {
+      method: "POST",
+      headers: {
+        "X-Api-Key": REMOVE_BG_API_KEY
+        // DO NOT set Content-Type when sending FormData; the browser will set the multipart boundary.
+      },
+      body: formData,
+    });
+
+    if (resp.ok) {
+      // remove.bg returns a PNG image binary on success
+      return await resp.blob();
+    } else {
+      // Try to parse JSON error if available
+      let txt;
+      try { txt = await resp.text(); } catch(e) { txt = ""; }
+      throw new Error(`${resp.status} ${resp.statusText} ${txt}`);
+    }
+  }
+</script>
+</body>
+</html>
